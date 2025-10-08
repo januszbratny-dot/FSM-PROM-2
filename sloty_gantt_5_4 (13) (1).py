@@ -653,18 +653,14 @@ st.sidebar.write(f"Tydzień: {week_days[0].strftime('%d-%m-%Y')} – {week_days[
 # ---------------------- Rezerwacja terminu ----------------------
 st.subheader("➕ Rezerwacja terminu")
 
-# Inicjalizacja session_state
+# ---------------------- Inicjalizacja Session State ----------------------
 st.session_state.setdefault("unscheduled_orders", [])
 st.session_state.setdefault("client_counter", 1)
-st.session_state.setdefault("client_name", f"Klient {st.session_state.client_counter}")
-st.session_state.setdefault("client_name_input", st.session_state.client_name)
-
-
-# Inicjalizacja przy pierwszym renderze
 st.session_state.setdefault("client_name_input", f"Klient {st.session_state.client_counter}")
 st.session_state.setdefault("client_name", st.session_state.client_name_input)
+st.session_state.setdefault("booking_day", date.today())
 
-# --- Pole do wprowadzania nazwy klienta ---
+# ---------------------- Pole do wprowadzania nazwy klienta ----------------------
 st.text_input(
     "Nazwa klienta",
     key="client_name_input",
@@ -673,20 +669,21 @@ st.text_input(
     })
 )
 
+# Zawsze synchronizujemy client_name z widżetem
+st.session_state.client_name = st.session_state.client_name_input
 
-
-# --- Wybór typu slotu ---
+# ---------------------- Wybór typu slotu ----------------------
 slot_names = [s["name"] for s in st.session_state.slot_types] if st.session_state.get("slot_types") else ["Standard"]
 if not st.session_state.get("slot_types"):
     st.session_state.slot_types = [{"name": "Standard", "minutes": 60, "weight": 1.0}]
+
 auto_type = weighted_choice(st.session_state.slot_types) or slot_names[0]
 idx = slot_names.index(auto_type) if auto_type in slot_names else 0
 slot_type_name = st.selectbox("Typ slotu", slot_names, index=idx)
 slot_type = next((s for s in st.session_state.slot_types if s["name"] == slot_type_name), slot_names[0])
 slot_duration = timedelta(minutes=slot_type["minutes"])
 
-# --- Navigator dni dla rezerwacji ---
-st.session_state.setdefault("booking_day", date.today())
+# ---------------------- Navigator dni dla rezerwacji ----------------------
 col_prev, col_mid, col_next = st.columns([1, 2, 1])
 with col_prev:
     if st.button("⬅️ Poprzedni dzień", key="booking_prev"):
@@ -699,7 +696,7 @@ with col_mid:
 
 booking_day = st.session_state.booking_day
 
-# --- Dostępne sloty ---
+# ---------------------- Dostępne sloty ----------------------
 st.markdown("### 🕒 Dostępne sloty w wybranym dniu")
 slot_minutes = slot_type["minutes"]
 available_slots = get_available_slots_for_day(booking_day, slot_minutes)
@@ -714,6 +711,7 @@ else:
         background-color: #28a745;
         color: white;
         font-weight: bold;
+        width: 100%;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -744,7 +742,7 @@ else:
         # Dostępne brygady
         col2.write(f"👷 Brygady: {', '.join(s['brygady'])}")
 
-        # --- Przycisk rezerwacji ---
+        # ---------------------- Przycisk rezerwacji ----------------------
         if col4.button("Zarezerwuj", key=f"book_{i}"):
             brygada = s['brygady'][0]
             slot = {
@@ -752,36 +750,38 @@ else:
                 "end": s["end"],
                 "slot_type": slot_type_name,
                 "duration_min": slot_minutes,
-                "client": st.session_state.client_name,
+                "client": st.session_state.client_name_input,
             }
             add_slot_to_brygada(brygada, booking_day, slot)
 
-            # automatyczne przypisanie nowego klienta tylko do client_name, widżet sam się zaktualizuje
+            # automatyczne przypisanie nowego klienta tylko do client_name_input
             st.session_state.client_counter += 1
-            st.session_state.client_name = f"Klient {st.session_state.client_counter}"
+            new_client_name = f"Klient {st.session_state.client_counter}"
+            st.session_state.client_name_input = new_client_name
+            st.session_state.client_name = new_client_name
 
             save_state_to_json()
             st.success(f"✅ Zarezerwowano slot dla {slot['client']}.")
-            st.rerun()  # używamy erun()
+            st.rerun()
 
-# --- Przycisk „Zleć bez terminu” ---
+# ---------------------- Przycisk „Zleć bez terminu” ----------------------
 st.markdown("### ⏳ Przekazanie zlecenia do Dyspozytora")
 if st.button("Zleć bez terminu", key="unscheduled_order"):
     st.session_state.unscheduled_orders.append({
-        "client": st.session_state.client_name,
+        "client": st.session_state.client_name_input,
         "slot_type": slot_type_name,
         "created": datetime.now().isoformat()
     })
 
-    # automatyczne przypisanie nowego klienta tylko do client_name
+    # automatyczne przypisanie nowego klienta
     st.session_state.client_counter += 1
-    st.session_state.client_name = f"Klient {st.session_state.client_counter}"
+    new_client_name = f"Klient {st.session_state.client_counter}"
+    st.session_state.client_name_input = new_client_name
+    st.session_state.client_name = new_client_name
 
     save_state_to_json()
-    st.success(f"✅ Zlecenie dla {st.session_state.client_name} dodane do listy bez terminu.")
-    st.experimental_rerun()
-
-
+    st.success(f"✅ Zlecenie dla {st.session_state.client_name_input} dodane do listy bez terminu.")
+    st.rerun()
 
 
 # ---------------------- AUTO-FILL FULL DAY (BEZPIECZNY) ----------------------
