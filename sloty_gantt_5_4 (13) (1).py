@@ -656,10 +656,14 @@ st.subheader("➕ Rezerwacja terminu")
 # Inicjalizacja session_state
 st.session_state.setdefault("unscheduled_orders", [])
 st.session_state.setdefault("client_counter", 1)
-st.session_state.setdefault("client_name", f"Klient {st.session_state.client_counter}")
+st.session_state.setdefault("next_client_name", f"Klient {st.session_state.client_counter}")
 st.session_state.setdefault("booking_day", date.today())
 
-# Pole do wprowadzania nazwy klienta (tylko key!)
+# Inicjalizacja pola klienta tylko raz
+if "client_name_input" not in st.session_state:
+    st.session_state["client_name_input"] = st.session_state["next_client_name"]
+
+# Pole do wprowadzania nazwy klienta
 st.text_input(
     "Nazwa klienta",
     key="client_name_input",
@@ -667,8 +671,6 @@ st.text_input(
         "client_name": st.session_state.client_name_input
     })
 )
-
-# Synchronizacja client_name z widżetem
 st.session_state.client_name = st.session_state.client_name_input
 
 # --- Typ slotu ---
@@ -682,7 +684,7 @@ slot_type = next((s for s in st.session_state.slot_types if s["name"] == slot_ty
 slot_duration = timedelta(minutes=slot_type["minutes"])
 
 # --- Navigator dni ---
-col_prev, col_mid, col_next = st.columns([1, 2, 1])
+col_prev, col_mid, col_next = st.columns([1,2,1])
 with col_prev:
     if st.button("⬅️ Poprzedni dzień", key="booking_prev"):
         st.session_state.booking_day -= timedelta(days=1)
@@ -693,14 +695,12 @@ with col_mid:
     st.markdown(f"### {st.session_state.booking_day.strftime('%A, %d %B %Y')}")
 booking_day = st.session_state.booking_day
 
-# --- Dostępne sloty ---
+# --- Sloty ---
 st.markdown("### 🕒 Dostępne sloty w wybranym dniu")
 slot_minutes = slot_type["minutes"]
 available_slots = get_available_slots_for_day(booking_day, slot_minutes)
 
-if not available_slots:
-    st.info("Brak dostępnych slotów dla wybranego dnia.")
-else:
+if available_slots:
     st.markdown("""
     <style>
     div.stButton > button:first-child {
@@ -713,7 +713,7 @@ else:
     """, unsafe_allow_html=True)
 
     for i, s in enumerate(available_slots):
-        col1, col2, col3, col4 = st.columns([1.2, 2, 1, 1])
+        col1, col2, col3, col4 = st.columns([1.2,2,1,1])
         arr_start_dt, arr_end_dt = s.get("arrival_window_start"), s.get("arrival_window_end")
         if not arr_start_dt or not arr_end_dt:
             brygada = s["brygady"][0]
@@ -730,39 +730,42 @@ else:
         col2.write(f"👷 Brygady: {', '.join(s['brygady'])}")
 
         # --- Przycisk Zarezerwuj ---
-        if col4.button("Zarezerwuj", key=f"book_{i}"):
+        def reserve_slot(slot_data=s):
             slot = {
-                "start": s["start"],
-                "end": s["end"],
+                "start": slot_data["start"],
+                "end": slot_data["end"],
                 "slot_type": slot_type_name,
                 "duration_min": slot_minutes,
                 "client": st.session_state.client_name_input,
             }
-            add_slot_to_brygada(s['brygady'][0], booking_day, slot)
+            add_slot_to_brygada(slot_data['brygady'][0], booking_day, slot)
 
-            # Zwiększamy licznik klienta i ustawiamy client_name na nowego klienta
+            # przygotuj następnego klienta w osobnym kluczu
             st.session_state.client_counter += 1
-            st.session_state.client_name_input = f"Klient {st.session_state.client_counter}"
-            st.session_state.client_name = st.session_state.client_name_input
-
+            st.session_state.next_client_name = f"Klient {st.session_state.client_counter}"
             save_state_to_json()
             st.success(f"✅ Zarezerwowano slot dla {slot['client']}.")
-            st.rerun()  # bez błędów
+            st.rerun()  # bez nadpisywania widgeta
 
-# --- Przycisk Zleć bez terminu ---
+        if col4.button("Zarezerwuj", key=f"book_{i}"):
+            reserve_slot()
+
+# --- Zleć bez terminu ---
 st.markdown("### ⏳ Przekazanie zlecenia do Dyspozytora")
-if st.button("Zleć bez terminu", key="unscheduled_order"):
+def assign_unscheduled():
     st.session_state.unscheduled_orders.append({
         "client": st.session_state.client_name_input,
         "slot_type": slot_type_name,
         "created": datetime.now().isoformat()
     })
     st.session_state.client_counter += 1
-    st.session_state.client_name_input = f"Klient {st.session_state.client_counter}"
-    st.session_state.client_name = st.session_state.client_name_input
+    st.session_state.next_client_name = f"Klient {st.session_state.client_counter}"
     save_state_to_json()
-    st.success(f"✅ Zlecenie dla {st.session_state.client_name_input} dodane do listy bez terminu.")
+    st.success(f"✅ Zlecenie dodane dla {st.session_state.client_name_input}.")
     st.rerun()
+
+if st.button("Zleć bez terminu", key="unscheduled_order"):
+    assign_unscheduled()
 
 
 # ---------------------- AUTO-FILL FULL DAY (BEZPIECZNY) ----------------------
